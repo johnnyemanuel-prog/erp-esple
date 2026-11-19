@@ -7,7 +7,7 @@
 
 -- Atualiza atualizado_em em todo update.
 create or replace function public.tocar_atualizado_em() returns trigger
-language plpgsql as $$
+language plpgsql set search_path = '' as $$
 begin
   new.atualizado_em := now();
   return new;
