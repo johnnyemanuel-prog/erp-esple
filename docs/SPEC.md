@@ -155,7 +155,7 @@ Os campos que essas funções vão usar já estão previstos no cadastro.
 ## Pendências
 
 Antes de a Alinne começar a contar:
-- [ ] Exportação do Innosystem (arquivo de exemplo, para ver as colunas e o formato do código de barras).
+- [x] Exportação do Innosystem (recebida; formato em [`INNOSYSTEM.md`](INNOSYSTEM.md)).
 - [ ] Foto de uma etiqueta antiga do Innosystem.
 - [ ] Pacote de folhas Pimaco A4349 e teste de impressão no PC.
 

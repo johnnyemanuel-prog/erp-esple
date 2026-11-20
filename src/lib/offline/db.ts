@@ -3,6 +3,7 @@
  * e entra na fila de sincronização; o Supabase recebe depois, quando houver internet.
  */
 import Dexie, { type EntityTable } from "dexie";
+import type { ItemCatalogo } from "@/lib/innosystem/importar";
 
 interface Base {
   id: string;
@@ -73,15 +74,8 @@ export interface Movimentacao extends Base {
   data: string;
 }
 
-export interface ItemCatalogo {
-  id: string;
-  codigoBarras?: string | null;
-  nome?: string | null;
-  referencia?: string | null;
-  categoria?: string | null;
-  /** Nome sem acento, para o autocompletar. */
-  nomeBusca?: string;
-}
+/** Catálogo do Innosystem (só consulta). A chave é o código interno do Innosystem. */
+export type { ItemCatalogo };
 
 export type TabelaSincronizada =
   | "local"
@@ -112,7 +106,7 @@ export class BancoEsplendida extends Dexie {
   modelos!: EntityTable<Modelo, "id">;
   fotos!: EntityTable<FotoModelo, "id">;
   movimentacoes!: EntityTable<Movimentacao, "id">;
-  catalogo!: EntityTable<ItemCatalogo, "id">;
+  catalogo!: EntityTable<ItemCatalogo, "codigoInnosystem">;
   fila!: EntityTable<ItemFila, "seq">;
   meta!: EntityTable<Meta, "chave">;
 
@@ -125,7 +119,7 @@ export class BancoEsplendida extends Dexie {
       modelos: "id, &codigo, codigoBarrasInnosystem, referencia, status, nome",
       fotos: "id, modeloId",
       movimentacoes: "id, modeloId, sessaoId, localOrigemId, localDestinoId",
-      catalogo: "id, codigoBarras, referencia, nomeBusca",
+      catalogo: "codigoInnosystem, codigoBarras, referenciaNormalizada",
       fila: "++seq, [tabela+registroId]",
       meta: "chave",
     });

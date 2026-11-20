@@ -5,11 +5,13 @@
  * O remoto é uma interface, para testar sem rede; `remotoSupabase` liga ao cliente real.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { BancoEsplendida, FotoModelo, ItemFila, TabelaSincronizada } from "./db";
+import type { BancoEsplendida, FotoModelo, ItemCatalogo, ItemFila, TabelaSincronizada } from "./db";
 import { tabelaLocal } from "./repositorio";
 
 export interface Remoto {
   upsert(tabela: TabelaSincronizada, linha: Record<string, unknown>): Promise<void>;
+  /** Catálogo do Innosystem, em lotes; substitui o que houver no servidor. */
+  substituirCatalogo(linhas: Record<string, unknown>[]): Promise<void>;
   enviarArquivo(caminho: string, arquivo: Blob): Promise<void>;
   userId(): Promise<string>;
 }
@@ -69,7 +71,36 @@ async function executar(db: BancoEsplendida, remoto: Remoto): Promise<ResultadoS
       });
     }
   }
+  if ((await db.meta.get("catalogoPendente"))?.valor === true) {
+    try {
+      const itens = await db.catalogo.toArray();
+      await remoto.substituirCatalogo(itens.map(paraLinhaCatalogo));
+      await db.meta.put({ chave: "catalogoPendente", valor: false });
+    } catch {
+      falhas++;
+    }
+  }
   return { enviados, falhas, restantes: await db.fila.count() };
+}
+
+export function paraLinhaCatalogo(it: ItemCatalogo): Record<string, unknown> {
+  return {
+    codigo_innosystem: it.codigoInnosystem,
+    codigo_barras: it.codigoBarras,
+    nome: it.nome,
+    nome_sugerido: it.nomeSugerido,
+    referencia: it.referencia,
+    referencia_normalizada: it.referenciaNormalizada,
+    categoria: it.categoria,
+    grupo_original: it.grupoOriginal,
+    custo_centavos: it.custoCentavos,
+    preco_centavos: it.precoCentavos,
+    fornecedora: it.fornecedora,
+    cor: it.cor,
+    ncm: it.ncm,
+    incluido_em: it.incluidoEm,
+    dados: it.dados,
+  };
 }
 
 async function enviarItem(db: BancoEsplendida, remoto: Remoto, item: ItemFila, userId: string) {
@@ -97,6 +128,41 @@ export function remotoSupabase(supabase: SupabaseClient): Remoto {
     async upsert(tabela, linha) {
       const { error } = await supabase.from(tabela).upsert(linha, { onConflict: "id" });
       if (error) throw new Error(`${tabela}: ${error.message}`);
+    },
+    async substituirCatalogo(linhas) {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) throw new Error("Sem sessão: entre de novo para sincronizar.");
+      const userId = u.user.id;
+      for (let i = 0; i < linhas.length; i += 500) {
+        const lote = linhas.slice(i, i + 500).map((l) => ({ ...l, user_id: userId }));
+        const { error } = await supabase
+          .from("catalogo_innosystem")
+          .upsert(lote, { onConflict: "user_id,codigo_innosystem" });
+        if (error) throw new Error(`catálogo: ${error.message}`);
+      }
+      // O que sumiu da exportação nova sai do catálogo do servidor.
+      const codigos = linhas.map((l) => String(l.codigo_innosystem));
+      const existentes: string[] = [];
+      for (let de = 0; ; de += 1000) {
+        // O servidor devolve no máximo 1.000 linhas por consulta.
+        const { data, error } = await supabase
+          .from("catalogo_innosystem")
+          .select("codigo_innosystem")
+          .order("codigo_innosystem")
+          .range(de, de + 999);
+        if (error) throw new Error(`catálogo: ${error.message}`);
+        existentes.push(...(data ?? []).map((e) => e.codigo_innosystem as string));
+        if (!data || data.length < 1000) break;
+      }
+      const manter = new Set(codigos);
+      const remover = existentes.filter((c) => !manter.has(c));
+      for (let i = 0; i < remover.length; i += 200) {
+        const { error: e } = await supabase
+          .from("catalogo_innosystem")
+          .delete()
+          .in("codigo_innosystem", remover.slice(i, i + 200));
+        if (e) throw new Error(`catálogo: ${e.message}`);
+      }
     },
     async enviarArquivo(caminho, arquivo) {
       const { error } = await supabase.storage

@@ -17,6 +17,7 @@ function remotoFalso(falharEm?: string) {
   const linhas = new Map<string, Record<string, unknown>>();
   const arquivos: string[] = [];
   const ordem: string[] = [];
+  const catalogo: Record<string, unknown>[] = [];
   const remoto: Remoto = {
     async upsert(tabela, linha) {
       if (tabela === falharEm) throw new Error("sem rede");
@@ -24,9 +25,10 @@ function remotoFalso(falharEm?: string) {
       ordem.push(tabela);
     },
     async enviarArquivo(caminho) { arquivos.push(caminho); },
+    async substituirCatalogo(l) { catalogo.push(...l); },
     async userId() { return "u1"; },
   };
-  return { remoto, linhas, arquivos, ordem };
+  return { remoto, linhas, arquivos, ordem, catalogo };
 }
 
 const blob = () => new Blob(["x"], { type: "image/webp" });
