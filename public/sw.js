@@ -19,6 +19,13 @@ self.addEventListener("install", (evento) => {
           for (const m of html.matchAll(/\/_next\/static\/[^"'\s)\\]+/g)) arquivos.add(m[0]);
         } catch {}
       }
+      // Os CSS citam as fontes (/_next/static/media/...): guarda também.
+      for (const u of [...arquivos].filter((a) => a.endsWith(".css"))) {
+        try {
+          const css = await (await fetch(u)).text();
+          for (const m of css.matchAll(/\/_next\/static\/media\/[^"'\s)]+/g)) arquivos.add(m[0]);
+        } catch {}
+      }
       await Promise.all(
         [...arquivos].map((u) =>
           fetch(u).then((r) => (r.ok ? cache.put(u, r) : null)).catch(() => null),

@@ -21,7 +21,10 @@ export default function Inicio() {
 
   return (
     <div className="inicio">
-      <h1>Esplêndida</h1>
+      <div className="marca">
+        <span className="marca-titulo">ESPLÊNDIDA</span>
+        <span className="marca-sub">SEMIJOIAS</span>
+      </div>
       <div className="numeros">
         <div><strong>{dados?.modelos ?? "…"}</strong><span>modelos</span></div>
         <div><strong>{dados?.pecas ?? "…"}</strong><span>peças</span></div>
