@@ -5,7 +5,7 @@ No ar em **https://erp-esple.vercel.app** (21/11/2026). Onde aparecer `<endereç
 ## 1. Vercel (uma vez)
 
 1. Em vercel.com → **Add New → Project**, importe o repositório `johnnyemanuel-prog/erp-esple` (preset **Next.js**). O projeto se chama `erp-esple` e responde em `erp-esple.vercel.app`.
-   - `<endereço do app>` **não é nosso** (é de outra loja). Para um endereço mais bonito: Vercel → projeto → **Settings → Domains → Add** `esplendida-semijoias.vercel.app` (estava livre em 21/11/2026).
+   - `esplendida.vercel.app` **não é nosso** (é de outra loja). Para um endereço mais bonito: Vercel → projeto → **Settings → Domains → Add** `esplendida-semijoias.vercel.app` (estava livre em 21/11/2026).
 2. Em **Environment Variables**, antes de publicar:
 
    | Nome | Valor |
