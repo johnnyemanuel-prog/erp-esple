@@ -60,3 +60,36 @@ export function preencherDoCatalogo(item: ItemCatalogo): Partial<DadosModelo> {
     ncm: item.ncm,
   };
 }
+
+/**
+ * Acha um modelo já cadastrado a partir de qualquer leitura: QR/código novo ("0123"),
+ * etiqueta antiga do Innosystem (código de barras) ou o código interno do Innosystem.
+ */
+export async function acharModeloPorLeitura(db: BancoEsplendida, lido: string) {
+  const t = lido.trim();
+  if (!t) return null;
+  if (/^\d{1,4}$/.test(t) && Number(t) > 0) {
+    const porCodigo = await db.modelos.where("codigo").equals(t.padStart(4, "0")).first();
+    if (porCodigo) return porCodigo;
+  }
+  const porBarras = await db.modelos.where("codigoBarrasInnosystem").equals(t).first();
+  if (porBarras) return porBarras;
+  const item = await buscarPorCodigoBarras(db, t);
+  if (item?.codigoBarras) {
+    return (await db.modelos.where("codigoBarrasInnosystem").equals(item.codigoBarras).first()) ?? null;
+  }
+  return null;
+}
+
+/** Busca entre os modelos já cadastrados, por pedaços do nome ou da referência. */
+export async function buscarModelosPorNome(db: BancoEsplendida, digitado: string, limite = 8) {
+  const termos = normalizar(digitado).split(" ").filter(Boolean);
+  if (!termos.length) return [];
+  const achados = await db.modelos
+    .filter((m) => {
+      const ps = normalizar(`${m.nome ?? ""} ${m.referencia ?? ""} ${m.codigo}`).split(" ");
+      return termos.every((t) => ps.some((p) => p.startsWith(t)));
+    })
+    .toArray();
+  return achados.slice(0, limite);
+}

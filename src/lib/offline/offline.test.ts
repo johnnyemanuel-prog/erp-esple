@@ -113,3 +113,43 @@ describe("sincronização", () => {
       .toEqual({ local_origem_id: "a", data: "d" });
   });
 });
+
+import { baixar, type RemotoLeitura } from "./baixar";
+import { listarAReimprimir, marcarEtiquetasImpressas } from "./repositorio";
+
+describe("baixar do servidor", () => {
+  it("traz registros e catálogo, sem pisar no que está na fila, e acerta o contador", async () => {
+    const servidor: Record<string, Record<string, unknown>[]> = {
+      local: [{ id: "L1", user_id: "u", nome: "Casa", ativo: true, responsavel: null, criado_em: "x", atualizado_em: "t" }],
+      modelo: [{ id: "M9", user_id: "u", codigo: "0042", nome: "Do servidor", status: "rascunho", criado_em: "c", atualizado_em: "t" }],
+      catalogo_innosystem: [{ codigo_innosystem: "1387", codigo_barras: "213875", nome: "BR FLORES 1387", nome_sugerido: "Brinco Flores" }],
+    };
+    const remoto: RemotoLeitura = { async listar(t) { return servidor[t] ?? []; } };
+
+    const casa = await criarLocal(db, "Casa local");
+    servidor.local.push({ id: casa.id, nome: "Nome velho do servidor", ativo: true });
+
+    const r = await baixar(db, remoto);
+    expect(r.catalogo).toBe(1);
+    expect((await db.locais.get(casa.id))?.nome).toBe("Casa local");
+    expect(await db.modelos.get("M9")).toMatchObject({ codigo: "0042", criadoEm: "c" });
+    expect(await db.modelos.get("M9")).not.toHaveProperty("userId");
+    expect((await db.catalogo.get("1387"))?.nomeBusca).toContain("flores");
+
+    const sessao = await abrirSessao(db, "S", casa.id);
+    const { modelo } = await cadastrarMontinho(db, { dados: { nome: "Novo" }, quantidade: 1, sessao });
+    expect(modelo.codigo).toBe("0043");
+  });
+});
+
+describe("etiquetas a reimprimir", () => {
+  it("lista quando o preço muda depois de impresso", async () => {
+    const casa = await criarLocal(db, "Casa");
+    const sessao = await abrirSessao(db, "S", casa.id);
+    const { modelo } = await cadastrarMontinho(db, { dados: { nome: "A", custoCentavos: 1900 }, quantidade: 1, sessao });
+    await marcarEtiquetasImpressas(db, [modelo.id]);
+    expect(await listarAReimprimir(db)).toHaveLength(0);
+    await atualizarModelo(db, modelo.id, { custoCentavos: 2500 });
+    expect((await listarAReimprimir(db)).map((m) => m.id)).toEqual([modelo.id]);
+  });
+});

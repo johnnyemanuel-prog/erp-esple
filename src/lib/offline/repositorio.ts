@@ -4,6 +4,7 @@
  */
 import { formatarCodigo } from "@/lib/dominio/etiqueta";
 import { pendencias, statusModelo } from "@/lib/dominio/pendencias";
+import { precoAtual } from "@/lib/dominio/preco";
 import type { BancoEsplendida, Modelo, Movimentacao, SessaoContagem, TabelaSincronizada } from "./db";
 
 const agora = () => new Date().toISOString();
@@ -200,4 +201,27 @@ export async function listarPendencias(db: BancoEsplendida) {
       return { modelo: m, faltando: pendencias({ ...m, qtdFotos }) };
     }),
   );
+}
+
+/** Depois de imprimir: guarda o preço que foi para a etiqueta (base da lista "a reimprimir"). */
+export async function marcarEtiquetasImpressas(db: BancoEsplendida, modeloIds: string[]) {
+  const t = agora();
+  await db.transaction("rw", db.modelos, db.fila, async () => {
+    for (const id of modeloIds) {
+      const m = await db.modelos.get(id);
+      if (!m) continue;
+      await db.modelos.update(id, {
+        precoImpressoCentavos: precoAtual(m).centavos,
+        etiquetaImpressaEm: t,
+        atualizadoEm: t,
+      });
+      await enfileirar(db, "modelo", id);
+    }
+  });
+}
+
+/** Modelos cuja etiqueta colada mostra um preço diferente do atual (ou nunca foram impressos). */
+export async function listarAReimprimir(db: BancoEsplendida) {
+  const todos = await db.modelos.toArray();
+  return todos.filter((m) => m.etiquetaImpressaEm && precoAtual(m).centavos !== (m.precoImpressoCentavos ?? null));
 }
