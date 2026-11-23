@@ -59,6 +59,9 @@ export interface FotoModelo extends Base {
   miniatura?: Blob | null;
   caminho?: string | null;
   caminhoMiniatura?: string | null;
+  /** Vetor da foto (busca por foto), calculado no celular. */
+  embedding?: number[] | null;
+  embeddingModelo?: string | null;
 }
 
 export type TipoMovimentacao = "entrada" | "transferencia" | "venda" | "ajuste";

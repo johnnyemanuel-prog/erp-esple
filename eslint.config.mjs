@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Motor e modelo da busca por foto (gerados no build).
+    "public/ort/**",
+    "public/modelos/**",
   ]),
 ]);
 

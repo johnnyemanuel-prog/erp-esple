@@ -67,7 +67,7 @@ O Esplêndida é uma ferramenta de bolso para visita, banquinha e casa, não um 
 | PC | Modo "escritório": lê os dados, imprime etiquetas e exporta a planilha. Não cadastra |
 | Login | Supabase Auth com e-mail e senha, uma conta só, sessão longa e RLS (regras de acesso) por usuário |
 | IA | **Sem API paga na primeira fatia.** Depois, entra como sugestão em lote (nomes, leitura de NF em PDF ou foto) |
-| Busca por foto | O embedding (o vetor que resume a foto) é calculado **no próprio celular**, com CLIP ou SigLIP via transformers.js, também offline. O modelo exato será escolhido testando no S25 com fotos reais |
+| Busca por foto | O embedding (o vetor que resume a foto) é calculado **no próprio celular**, com CLIP ou SigLIP via transformers.js, também offline. Modelo escolhido: **MobileCLIP S0 em fp16** (~23 MB; a versão q8 dá vetores errados), servido pelo próprio app e guardado no aparelho. Testado com fotos de colares alteradas (girada, recortada, escurecida): acertou todas, com 87–100% contra no máximo 66% da peça seguinte. Falta validar no S25 com fotos reais |
 | Fotos | Comprimidas no celular para ~1024 px (WebP), com miniatura de ~200 px. No arranque basta 1 foto por modelo; fotos extras ficam como pendência |
 
 ## Módulos, em ordem

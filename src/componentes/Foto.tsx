@@ -33,6 +33,8 @@ export function FotoPrincipal({ modeloId, tamanho = "mini", className }: { model
     [modeloId],
   );
   const url = useUrlFoto(foto, tamanho);
+  // Tem foto, mas ainda está chegando do servidor: espaço vazio em vez de "sem foto".
+  if (!url && foto) return <div className={`${className ?? (tamanho === "mini" ? "mini" : "foto-grande")} sem-foto`} aria-busy="true" />;
   return url ? (
     // eslint-disable-next-line @next/next/no-img-element
     <img src={url} alt="" className={className ?? (tamanho === "mini" ? "mini" : "foto-grande")} />

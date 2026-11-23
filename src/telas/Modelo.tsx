@@ -11,6 +11,7 @@ import { banco, type Modelo as TModelo } from "@/lib/offline/db";
 import { atualizarModelo, saldoPorLocal, salvarFoto, vendi1 } from "@/lib/offline/repositorio";
 import { comprimirFoto } from "@/lib/app/foto";
 import { pedirSincronizacao } from "@/lib/app/sync";
+import { pedirIndexacao } from "@/lib/ia/visao";
 import { CampoReais, Chips, Preco } from "@/componentes/Campos";
 import { Foto } from "@/componentes/Foto";
 import { useModo } from "@/componentes/useModo";
@@ -60,6 +61,7 @@ export default function Modelo() {
     const c = await comprimirFoto(arq);
     await salvarFoto(db, { modeloId: modelo.id, ...c });
     pedirSincronizacao();
+    pedirIndexacao();
   }
 
   return (

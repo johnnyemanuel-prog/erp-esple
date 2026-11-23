@@ -40,3 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Busca por foto: baixados/copiados no build (scripts/preparar-ia.mjs)
+/public/ort/
+/public/modelos/

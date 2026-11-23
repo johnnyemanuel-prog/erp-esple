@@ -37,6 +37,15 @@ export function useStatusSync(): StatusSync {
 
 const SEIS_HORAS = 6 * 60 * 60 * 1000;
 
+const depois = new Set<() => void>();
+/** Algo para rodar depois de cada sincronização (ex.: preparar as fotos que chegaram do servidor). */
+export function depoisDeSincronizar(fn: () => void) {
+  depois.add(fn);
+  return () => {
+    depois.delete(fn);
+  };
+}
+
 /** Sobe a fila e, se pedido (ou no PC, ou com o aparelho vazio), baixa tudo do servidor. */
 export async function sincronizarAgora(opcoes: { baixarTudo?: boolean } = {}) {
   if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -64,6 +73,7 @@ export async function sincronizarAgora(opcoes: { baixarTudo?: boolean } = {}) {
     definir({ erro: e instanceof Error ? e.message : String(e) });
   } finally {
     definir({ sincronizando: false });
+    depois.forEach((f) => f());
   }
 }
 

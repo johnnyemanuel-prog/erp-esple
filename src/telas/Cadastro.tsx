@@ -16,6 +16,9 @@ import {
 import { cadastrarMontinho, salvarFoto, somarAoModelo } from "@/lib/offline/repositorio";
 import type { ItemCatalogo } from "@/lib/innosystem/importar";
 import { comprimirFoto } from "@/lib/app/foto";
+import { LIMIAR_PARECIDO, MODELO_VISAO } from "@/lib/dominio/similaridade";
+import { buscarPorVetor } from "@/lib/offline/indexar";
+import { pedirIndexacao, vetorDaImagem, visaoSuportada } from "@/lib/ia/visao";
 import { pedirSincronizacao } from "@/lib/app/sync";
 import { CampoReais, Chips, Preco, Quantidade } from "@/componentes/Campos";
 import { FotoPrincipal } from "@/componentes/Foto";
@@ -50,7 +53,8 @@ export default function Cadastro() {
   const [tocados, setTocados] = useState<{ categoria?: boolean; banho?: boolean }>({});
   const [doCatalogo, setDoCatalogo] = useState<ItemCatalogo | null>(null);
   const [existente, setExistente] = useState<Modelo | null>(null);
-  const [foto, setFoto] = useState<{ imagem: Blob; miniatura: Blob; url: string } | null>(null);
+  const [foto, setFoto] = useState<{ imagem: Blob; miniatura: Blob; url: string; vetor?: number[] } | null>(null);
+  const [parecidos, setParecidos] = useState<{ modelo: Modelo; similaridade: number }[]>([]);
   const [lendo, setLendo] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [salvo, setSalvo] = useState<{ codigo: string; nome: string; somado: boolean } | null>(null);
@@ -121,7 +125,20 @@ export default function Cadastro() {
     try {
       const c = await comprimirFoto(arq);
       if (foto) URL.revokeObjectURL(foto.url);
-      setFoto({ ...c, url: URL.createObjectURL(c.miniatura) });
+      const url = URL.createObjectURL(c.miniatura);
+      setFoto({ ...c, url });
+      setParecidos([]);
+      // Aviso de duplicata: em segundo plano, sem segurar o cadastro.
+      if (visaoSuportada()) {
+        vetorDaImagem(c.imagem)
+          .then(async (vetor) => {
+            setFoto((f) => (f && f.url === url ? { ...f, vetor } : f));
+            const achados = await buscarPorVetor(db, vetor, { limite: 3, minimo: LIMIAR_PARECIDO, ignorarModeloId: existente?.id });
+            const modelos = await db.modelos.bulkGet(achados.map((a) => a.modeloId));
+            setParecidos(achados.flatMap((a, i) => (modelos[i] ? [{ modelo: modelos[i]!, similaridade: a.similaridade }] : [])));
+          })
+          .catch((e) => console.warn("Busca por foto indisponível:", e));
+      }
     } catch (erro) {
       setAviso(erro instanceof Error ? erro.message : "Não deu para usar a foto.");
     }
@@ -134,6 +151,7 @@ export default function Cadastro() {
     setDoCatalogo(null);
     setExistente(null);
     setFoto(null);
+    setParecidos([]);
     setAviso(null);
   }
 
@@ -143,7 +161,7 @@ export default function Cadastro() {
     try {
       if (existente) {
         await somarAoModelo(db, { modeloId: existente.id, quantidade: f.quantidade, sessao });
-        if (foto) await salvarFoto(db, { modeloId: existente.id, imagem: foto.imagem, miniatura: foto.miniatura });
+        if (foto) await salvarFoto(db, { modeloId: existente.id, imagem: foto.imagem, miniatura: foto.miniatura, embedding: foto.vetor, embeddingModelo: MODELO_VISAO });
         setSalvo({ codigo: existente.codigo, nome: existente.nome ?? "", somado: true });
       } else {
         const { modelo } = await cadastrarMontinho(db, {
@@ -161,10 +179,11 @@ export default function Cadastro() {
             ncm: doCatalogo?.ncm ?? null,
           },
         });
-        if (foto) await salvarFoto(db, { modeloId: modelo.id, imagem: foto.imagem, miniatura: foto.miniatura });
+        if (foto) await salvarFoto(db, { modeloId: modelo.id, imagem: foto.imagem, miniatura: foto.miniatura, embedding: foto.vetor, embeddingModelo: MODELO_VISAO });
         setSalvo({ codigo: modelo.codigo, nome: modelo.nome ?? "", somado: false });
       }
       pedirSincronizacao();
+      if (foto && !foto.vetor) pedirIndexacao();
       limpar();
       window.scrollTo({ top: 0 });
     } catch (e) {
@@ -262,6 +281,26 @@ export default function Cadastro() {
         )}
         <input ref={inputFoto} type="file" accept="image/*" capture="environment" hidden onChange={escolherFoto} />
       </div>
+
+      {!existente && parecidos.length > 0 && (
+        <div className="cartao destaque">
+          <strong>Parece com {parecidos.map((p) => p.modelo.codigo).join(", ")}: é o mesmo?</strong>
+          <ul className="lista">
+            {parecidos.map(({ modelo: m, similaridade }) => (
+              <li key={m.id} className="linha-estoque">
+                <div className="linha-modelo">
+                  <FotoPrincipal modeloId={m.id} />
+                  <div>
+                    <strong>{m.codigo} · {m.nome || "sem nome"}</strong>
+                    <span>{Math.round(similaridade * 100)}% parecida</span>
+                  </div>
+                </div>
+                <button className="botao pequeno" onClick={() => { setExistente(m); setParecidos([]); }}>Somar a este</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="campo">
         <span>Quantidade</span>

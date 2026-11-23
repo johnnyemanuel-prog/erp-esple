@@ -23,6 +23,7 @@ Copie `.env.example` para `.env.local` e preencha com os dados do projeto Supaba
 | `src/lib/etiquetas/` | Geração do PDF A4 das etiquetas (QR vetorial + código + preço disfarçado) |
 | `src/lib/offline/` | Banco local (Dexie), operações de cadastro que gravam e enfileiram, e a sincronização com o Supabase |
 | `supabase/migrations/` | Schema do banco, RLS por usuária, view de estoque derivado das movimentações e bucket de fotos |
+| `src/lib/ia/` | Busca por foto no próprio celular: worker com o MobileCLIP S0 (fp16) via transformers.js; o motor e o modelo são copiados/baixados no build por `scripts/preparar-ia.mjs` |
 | `src/app/api/manter-ativo/` | Rota chamada pela Vercel Cron todo dia para o Supabase grátis não pausar |
 
 ## Decisões de implementação

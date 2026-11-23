@@ -2,6 +2,9 @@
  * Os dados ficam no IndexedDB (Dexie); aqui só guardamos as telas e seus arquivos. */
 const VERSAO = new URL(self.location).searchParams.get("v") || "dev";
 const CACHE = `esplendida-${VERSAO}`;
+// Modelo de IA e motor (~50 MB): cache próprio, que não é apagado a cada versão do app.
+// O nome da pasta muda se o modelo mudar (ver scripts/preparar-ia.mjs).
+const CACHE_IA = "esplendida-ia-v1";
 const ROTAS = ["/", "/entrar", "/nova-senha", "/sessoes", "/sessao", "/cadastro", "/pendencias", "/modelo", "/consulta", "/etiquetas", "/mais"];
 const EXTRAS = ["/manifest.webmanifest", "/icone-192.png", "/icone-512.png", "/logo.png", "/apple-touch-icon.png"];
 
@@ -39,7 +42,7 @@ self.addEventListener("install", (evento) => {
 self.addEventListener("activate", (evento) => {
   evento.waitUntil(
     (async () => {
-      for (const nome of await caches.keys()) if (nome !== CACHE) await caches.delete(nome);
+      for (const nome of await caches.keys()) if (nome !== CACHE && nome !== CACHE_IA) await caches.delete(nome);
       await self.clients.claim();
     })(),
   );
@@ -76,11 +79,12 @@ self.addEventListener("fetch", (evento) => {
   // Dados de navegação do Next (RSC): sem internet, falha e o Next recarrega a tela (vinda do cache).
   if (req.headers.get("RSC") || url.searchParams.has("_rsc")) return;
 
-  // Arquivos com hash no nome nunca mudam: primeiro o cache.
-  if (url.pathname.startsWith("/_next/static/")) {
+  // Arquivos com hash no nome, o modelo de IA e o motor nunca mudam: primeiro o cache.
+  const ehIA = url.pathname.startsWith("/modelos/") || url.pathname.startsWith("/ort/");
+  if (url.pathname.startsWith("/_next/static/") || ehIA) {
     evento.respondWith(
       (async () => {
-        const cache = await caches.open(CACHE);
+        const cache = await caches.open(ehIA ? CACHE_IA : CACHE);
         const guardado = await cache.match(url.pathname);
         if (guardado) return guardado;
         const resp = await fetch(req);

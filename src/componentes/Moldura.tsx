@@ -7,8 +7,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { banco } from "@/lib/offline/db";
-import { iniciarSincronizacaoAutomatica, sincronizarAgora, useStatusSync } from "@/lib/app/sync";
+import { depoisDeSincronizar, iniciarSincronizacaoAutomatica, sincronizarAgora, useStatusSync } from "@/lib/app/sync";
 import { supabase } from "@/lib/app/supabase";
+import { modoAtual } from "@/lib/app/modo";
+import { pedirIndexacao } from "@/lib/ia/visao";
 import { useModo } from "./useModo";
 
 const LIVRES = ["/entrar", "/nova-senha"];
@@ -28,7 +30,12 @@ export function Moldura({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (logado === false && !livre) router.replace("/entrar");
-    if (logado) iniciarSincronizacaoAutomatica();
+    if (!logado) return;
+    iniciarSincronizacaoAutomatica();
+    // No celular, prepara para a busca por foto as fotos que ainda não têm vetor
+    // (inclusive as que acabaram de chegar do servidor).
+    if (modoAtual() !== "campo") return;
+    return depoisDeSincronizar(() => pedirIndexacao(5_000));
   }, [logado, livre, router]);
 
   useEffect(() => {

@@ -150,15 +150,22 @@ export async function atualizarModelo(db: BancoEsplendida, id: string, mudancas:
   });
 }
 
+/** Para quem grava a foto por fora (ex.: o vetor da busca por foto). */
+export async function enfileirarFoto(db: BancoEsplendida, fotoId: string) {
+  await enfileirar(db, "foto_modelo", fotoId);
+}
+
 export async function salvarFoto(
   db: BancoEsplendida,
-  args: { modeloId: string; imagem: Blob; miniatura: Blob },
+  args: { modeloId: string; imagem: Blob; miniatura: Blob; embedding?: number[] | null; embeddingModelo?: string | null },
 ) {
   const foto = {
     id: novoId(),
     modeloId: args.modeloId,
     imagem: args.imagem,
     miniatura: args.miniatura,
+    embedding: args.embedding ?? null,
+    embeddingModelo: args.embedding ? (args.embeddingModelo ?? null) : null,
     atualizadoEm: agora(),
     principal: false,
     ordem: 0,
