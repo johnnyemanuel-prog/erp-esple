@@ -8,11 +8,11 @@ import { precoDisfarcado } from "@/lib/dominio/etiqueta";
 import { ROTULO_PENDENCIA, pendencias } from "@/lib/dominio/pendencias";
 import { precoAtual } from "@/lib/dominio/preco";
 import { banco, type Modelo as TModelo } from "@/lib/offline/db";
-import { atualizarModelo, saldoPorLocal, salvarFoto, vendi1 } from "@/lib/offline/repositorio";
+import { atualizarModelo, registrarMovimentacao, saldoPorLocal, salvarFoto, vendi1 } from "@/lib/offline/repositorio";
 import { comprimirFoto } from "@/lib/app/foto";
 import { pedirSincronizacao } from "@/lib/app/sync";
 import { pedirIndexacao } from "@/lib/ia/visao";
-import { CampoReais, Chips, Preco } from "@/componentes/Campos";
+import { CampoReais, Chips, Preco, Quantidade } from "@/componentes/Campos";
 import { Foto } from "@/componentes/Foto";
 import { useModo } from "@/componentes/useModo";
 
@@ -23,6 +23,7 @@ export default function Modelo() {
   const db = banco();
   const modo = useModo();
   const [editando, setEditando] = useState(false);
+  const [adicionando, setAdicionando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const inputFoto = useRef<HTMLInputElement>(null);
 
@@ -105,10 +106,21 @@ export default function Modelo() {
 
       {modo === "campo" && (
         <div className="acoes">
+          <button className="botao" onClick={() => setAdicionando((a) => !a)}>{adicionando ? "Fechar" : "Adicionar peças"}</button>
           <button className="botao secundario" onClick={() => inputFoto.current?.click()}>Adicionar foto</button>
           <button className="botao secundario" onClick={() => setEditando((e) => !e)}>{editando ? "Fechar edição" : "Editar"}</button>
           <input ref={inputFoto} type="file" accept="image/*" capture="environment" hidden onChange={novaFoto} />
         </div>
+      )}
+      {adicionando && (
+        <AdicionarPecas
+          modeloId={modelo.id}
+          locais={locais.filter((l) => l.ativo)}
+          onFim={(qtd, local) => {
+            setAdicionando(false);
+            setMsg(`+${qtd} em ${local}.`);
+          }}
+        />
       )}
       {editando && <Edicao modelo={modelo} onFim={() => setEditando(false)} />}
 
@@ -160,6 +172,47 @@ function Edicao({ modelo, onFim }: { modelo: TModelo; onFim: () => void }) {
       <CampoReais rotulo="Custo" valor={e.custo} onChange={(custo) => setE({ ...e, custo })} />
       <CampoReais rotulo="Preço provisório (só vale sem custo)" valor={e.precoProvisorio} onChange={(precoProvisorio) => setE({ ...e, precoProvisorio })} />
       <button className="botao" onClick={salvar}>Salvar</button>
+    </div>
+  );
+}
+
+/**
+ * Entrada de peças num modelo já cadastrado (ex.: chegou mais uma "argola globinho").
+ * Se houver uma contagem aberta naquele local, a entrada fica junto dela (e sai nas etiquetas da sessão).
+ */
+function AdicionarPecas({
+  modeloId, locais, onFim,
+}: { modeloId: string; locais: { id: string; nome: string }[]; onFim: (qtd: number, local: string) => void }) {
+  const db = banco();
+  const abertas = useLiveQuery(() => db.sessoes.filter((s) => !s.fim).toArray(), [], []);
+  const [qtd, setQtd] = useState(1);
+  const [escolhido, setEscolhido] = useState<string | null>(null);
+  const localId = escolhido ?? abertas[0]?.localId ?? locais[0]?.id ?? "";
+  const sessao = abertas.find((s) => s.localId === localId);
+  if (!locais.length) return <p className="aviso">Cadastre um local primeiro (em Contar ou Mais).</p>;
+  return (
+    <div className="cartao">
+      <div className="campo">
+        <span>Quantas peças chegaram</span>
+        <Quantidade valor={qtd} onChange={setQtd} />
+      </div>
+      <label className="campo">
+        <span>Onde vão ficar</span>
+        <select value={localId} onChange={(e) => setEscolhido(e.target.value)}>
+          {locais.map((l) => <option key={l.id} value={l.id}>{l.nome}</option>)}
+        </select>
+      </label>
+      {sessao && <p className="sub">Entra na contagem aberta “{sessao.nome}”.</p>}
+      <button
+        className="botao"
+        onClick={async () => {
+          await registrarMovimentacao(db, { modeloId, localDestinoId: localId, quantidade: qtd, tipo: "entrada", sessaoId: sessao?.id ?? null });
+          pedirSincronizacao();
+          onFim(qtd, locais.find((l) => l.id === localId)?.nome ?? "");
+        }}
+      >
+        Adicionar {qtd}
+      </button>
     </div>
   );
 }

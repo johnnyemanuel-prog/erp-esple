@@ -4,7 +4,7 @@
  */
 import { deduzirBanho, normalizar } from "@/lib/dominio/deducao";
 import { codigoDaEtiquetaInnosystem, type ItemCatalogo } from "@/lib/innosystem/importar";
-import type { BancoEsplendida } from "./db";
+import type { BancoEsplendida, Modelo } from "./db";
 import type { DadosModelo } from "./repositorio";
 
 /** Substitui o catálogo inteiro (a exportação nova é a versão completa) e marca para subir. */
@@ -62,23 +62,46 @@ export function preencherDoCatalogo(item: ItemCatalogo): Partial<DadosModelo> {
 }
 
 /**
- * Acha um modelo já cadastrado a partir de qualquer leitura: QR/código novo ("0123"),
- * etiqueta antiga do Innosystem (código de barras) ou o código interno do Innosystem.
+ * Código "genérico" do Innosystem: uma etiqueta usada para várias peças diferentes
+ * (ex.: "Peças diversas faixa 4 – R$ 49,90"). Ler esse código não identifica a peça.
  */
-export async function acharModeloPorLeitura(db: BancoEsplendida, lido: string) {
+export function ehItemGenerico(item: Pick<ItemCatalogo, "nome" | "grupoOriginal"> | null | undefined): boolean {
+  if (!item) return false;
+  return /\bpe[cç]as\s+diversas\b/i.test(item.nome) || normalizar(item.grupoOriginal ?? "") === "diversos";
+}
+
+export interface ResultadoLeitura {
+  /** Modelos já cadastrados que batem com a leitura. */
+  modelos: Modelo[];
+  /** Item do catálogo do Innosystem, se a leitura for de uma etiqueta antiga. */
+  item: ItemCatalogo | null;
+  /** Verdadeiro quando a leitura não basta para saber qual é a peça (código genérico ou vários modelos). */
+  ambiguo: boolean;
+}
+
+/**
+ * Tudo o que uma leitura pode ser: QR/código novo ("0123"), etiqueta antiga do Innosystem
+ * (código de barras) ou o código interno do Innosystem.
+ */
+export async function lerCodigo(db: BancoEsplendida, lido: string): Promise<ResultadoLeitura> {
   const t = lido.trim();
-  if (!t) return null;
+  if (!t) return { modelos: [], item: null, ambiguo: false };
   if (/^\d{1,4}$/.test(t) && Number(t) > 0) {
     const porCodigo = await db.modelos.where("codigo").equals(t.padStart(4, "0")).first();
-    if (porCodigo) return porCodigo;
+    if (porCodigo) return { modelos: [porCodigo], item: null, ambiguo: false };
   }
-  const porBarras = await db.modelos.where("codigoBarrasInnosystem").equals(t).first();
-  if (porBarras) return porBarras;
   const item = await buscarPorCodigoBarras(db, t);
-  if (item?.codigoBarras) {
-    return (await db.modelos.where("codigoBarrasInnosystem").equals(item.codigoBarras).first()) ?? null;
-  }
-  return null;
+  const barras = [...new Set([t, item?.codigoBarras].filter((x): x is string => !!x))];
+  const modelos = (await db.modelos.where("codigoBarrasInnosystem").anyOf(barras).toArray()).sort((a, b) =>
+    a.codigo.localeCompare(b.codigo),
+  );
+  return { modelos, item, ambiguo: ehItemGenerico(item) || modelos.length > 1 };
+}
+
+/** O modelo, quando a leitura identifica uma peça só; null se não achar ou se for ambígua. */
+export async function acharModeloPorLeitura(db: BancoEsplendida, lido: string) {
+  const r = await lerCodigo(db, lido);
+  return !r.ambiguo && r.modelos.length === 1 ? r.modelos[0] : null;
 }
 
 /** Busca entre os modelos já cadastrados, por pedaços do nome ou da referência. */

@@ -53,3 +53,37 @@ describe("catálogo no celular", () => {
     expect(enviados[0][0]).toHaveProperty("codigo_innosystem");
   });
 });
+
+describe("etiqueta genérica (peças diversas)", () => {
+  const CSV2 =
+    "código;barras;nome;quantidade;custo;preço;tamanho;cor;ref;idfornecedor;nomefornecedor;idgrupo;grupo;minimo;dtinc;nrncm\n" +
+    "839;208397;Peças diversas faixa4 4990 839;0;19,96;49,90;;;;;;9;Diversos;0;20/04/26;\n" +
+    "1387;213875;BR FLORES DE ALEGRIA 1387;1;89,00;222,50;;;25671;6;HERRERA;4;Brincos;0;06/10/26;\n";
+
+  it("não escolhe sozinho: lista todas as peças daquela faixa", async () => {
+    const { lerExportacaoInnosystem } = await import("@/lib/innosystem/importar");
+    const { lerCodigo, acharModeloPorLeitura, ehItemGenerico } = await import("./catalogo");
+    const { abrirSessao, cadastrarMontinho, criarLocal } = await import("./repositorio");
+    await importarCatalogo(db, lerExportacaoInnosystem(CSV2).itens);
+    const casa = await criarLocal(db, "Casa");
+    const s = await abrirSessao(db, "S", casa.id);
+    const a = (await cadastrarMontinho(db, { dados: { nome: "Argola globinho", codigoBarrasInnosystem: "208397" }, quantidade: 1, sessao: s })).modelo;
+    const b = (await cadastrarMontinho(db, { dados: { nome: "Brinco coração", codigoBarrasInnosystem: "208397" }, quantidade: 1, sessao: s })).modelo;
+    await cadastrarMontinho(db, { dados: { nome: "Brinco flores", codigoBarrasInnosystem: "213875" }, quantidade: 1, sessao: s });
+
+    expect(ehItemGenerico((await db.catalogo.get("839"))!)).toBe(true);
+    const r = await lerCodigo(db, "208397");
+    expect(r.ambiguo).toBe(true);
+    expect(r.modelos.map((m) => m.id)).toEqual([a.id, b.id]);
+    expect(r.item?.custoCentavos).toBe(1996);
+    expect(await acharModeloPorLeitura(db, "208397")).toBeNull();
+
+    // Código genérico com uma peça só cadastrada também não decide sozinho.
+    const so1 = await lerCodigo(db, "208397");
+    expect(so1.ambiguo).toBe(true);
+
+    // Etiqueta própria de uma peça: continua indo direto.
+    expect((await acharModeloPorLeitura(db, "213875"))?.nome).toBe("Brinco flores");
+    expect((await acharModeloPorLeitura(db, "1"))?.id).toBe(a.id);
+  });
+});

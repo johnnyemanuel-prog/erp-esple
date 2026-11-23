@@ -11,7 +11,7 @@ import { BANHOS_PADRAO, CATEGORIAS_PADRAO, deduzirBanho, deduzirCategoria } from
 import { precoTabela } from "@/lib/dominio/preco";
 import { banco, type Modelo } from "@/lib/offline/db";
 import {
-  acharModeloPorLeitura, buscarModelosPorNome, buscarPorCodigoBarras, buscarPorNome, preencherDoCatalogo,
+  buscarModelosPorNome, buscarPorNome, ehItemGenerico, lerCodigo, preencherDoCatalogo,
 } from "@/lib/offline/catalogo";
 import { cadastrarMontinho, salvarFoto, somarAoModelo } from "@/lib/offline/repositorio";
 import type { ItemCatalogo } from "@/lib/innosystem/importar";
@@ -55,6 +55,9 @@ export default function Cadastro() {
   const [existente, setExistente] = useState<Modelo | null>(null);
   const [foto, setFoto] = useState<{ imagem: Blob; miniatura: Blob; url: string; vetor?: number[] } | null>(null);
   const [parecidos, setParecidos] = useState<{ modelo: Modelo; similaridade: number }[]>([]);
+  /** Etiqueta genérica ("peças diversas"): as peças já cadastradas com ela, para ela escolher. */
+  const [escolha, setEscolha] = useState<{ item: ItemCatalogo | null; modelos: Modelo[] } | null>(null);
+  const [notas, setNotas] = useState<Map<string, number>>(new Map());
   const [lendo, setLendo] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [salvo, setSalvo] = useState<{ codigo: string; nome: string; somado: boolean } | null>(null);
@@ -84,8 +87,29 @@ export default function Cadastro() {
   }, [f.nome, buscarSugestoes, db]);
   const sugestoesVisiveis = buscarSugestoes ? sugestoes : { modelos: [], catalogo: [] };
 
+  // Com a foto e uma etiqueta genérica: ordena as peças daquela faixa pela semelhança.
+  const vetorFoto = foto?.vetor;
+  useEffect(() => {
+    if (!vetorFoto || !escolha?.modelos.length) return;
+    let vivo = true;
+    buscarPorVetor(db, vetorFoto, { limite: 1000, minimo: -1 }).then((r) => {
+      if (vivo) setNotas(new Map(r.map((c) => [c.modeloId, c.similaridade])));
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [vetorFoto, escolha, db]);
+  const modelosEscolha = escolha
+    ? [...escolha.modelos].sort((a, b) => (notas.get(b.id) ?? -2) - (notas.get(a.id) ?? -2))
+    : [];
+
   const usarCatalogo = useCallback(async (item: ItemCatalogo) => {
     const p = preencherDoCatalogo(item);
+    if (ehItemGenerico(item)) {
+      // "Peças diversas": o código e o custo da faixa valem, mas o nome é da peça, não da etiqueta.
+      setF((a) => ({ ...a, codigoBarras: item.codigoBarras, custo: p.custoCentavos ?? a.custo, soPreco: p.custoCentavos ? false : a.soPreco }));
+      return;
+    }
     setDoCatalogo(item);
     setSugestoes({ modelos: [], catalogo: [] });
     setF((a) => ({
@@ -107,13 +131,18 @@ export default function Cadastro() {
   const aoLer = useCallback(async (texto: string) => {
     setLendo(false);
     setAviso(null);
-    const modelo = await acharModeloPorLeitura(db, texto);
-    if (modelo) {
-      setExistente(modelo);
+    const r = await lerCodigo(db, texto);
+    if (r.ambiguo) {
+      if (r.item) await usarCatalogo(r.item);
+      else setF((a) => ({ ...a, codigoBarras: texto }));
+      setEscolha({ item: r.item, modelos: r.modelos });
       return;
     }
-    const item = await buscarPorCodigoBarras(db, texto);
-    if (item) return usarCatalogo(item);
+    if (r.modelos.length === 1) {
+      setExistente(r.modelos[0]);
+      return;
+    }
+    if (r.item) return usarCatalogo(r.item);
     setF((a) => ({ ...a, codigoBarras: texto }));
     setAviso(`Código ${texto} não está no catálogo do Innosystem. Digite o nome.`);
   }, [db, usarCatalogo]);
@@ -152,6 +181,8 @@ export default function Cadastro() {
     setExistente(null);
     setFoto(null);
     setParecidos([]);
+    setEscolha(null);
+    setNotas(new Map());
     setAviso(null);
   }
 
@@ -223,6 +254,36 @@ export default function Cadastro() {
 
       {aviso && <p className="aviso">{aviso}</p>}
 
+      {escolha && !existente && (
+        <div className="cartao destaque">
+          <strong>
+            Etiqueta de peças diversas{escolha.item?.custoCentavos ? ` (custo ${(escolha.item.custoCentavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })})` : ""}
+          </strong>
+          {modelosEscolha.length ? (
+            <>
+              <p>Essa etiqueta é usada em várias peças. Qual destas é{foto?.vetor ? " (as mais parecidas com a foto primeiro)" : "? Tire a foto para ordenar pelas mais parecidas"}?</p>
+              <ul className="lista">
+                {modelosEscolha.map((m) => (
+                  <li key={m.id} className="linha-estoque">
+                    <div className="linha-modelo">
+                      <FotoPrincipal modeloId={m.id} />
+                      <div>
+                        <strong>{m.codigo} · {m.nome || "sem nome"}</strong>
+                        {notas.has(m.id) && <span>{Math.max(0, Math.round(notas.get(m.id)! * 100))}% parecida</span>}
+                      </div>
+                    </div>
+                    <button className="botao pequeno" onClick={() => setExistente(m)}>Somar a este</button>
+                  </li>
+                ))}
+              </ul>
+              <p className="sub">Se for outra peça, digite o nome abaixo: ela vira um modelo novo com o custo da faixa.</p>
+            </>
+          ) : (
+            <p>Nenhuma peça cadastrada com essa etiqueta ainda. Digite o nome da peça: ela vira um modelo novo com o custo da faixa.</p>
+          )}
+        </div>
+      )}
+
       {existente ? (
         <div className="cartao destaque">
           <div className="linha-modelo">
@@ -233,7 +294,9 @@ export default function Cadastro() {
             </div>
           </div>
           <p>As peças deste montinho vão ser somadas a esse modelo.</p>
-          <button className="botao link" onClick={() => setExistente(null)}>Não é o mesmo: cadastrar como novo</button>
+          <button className="botao link" onClick={() => setExistente(null)}>
+            {escolha ? "Não é este: voltar à lista" : "Não é o mesmo: cadastrar como novo"}
+          </button>
         </div>
       ) : (
         <>
@@ -249,6 +312,15 @@ export default function Cadastro() {
               autoComplete="off"
             />
           </label>
+          {/^\d{6,14}$/.test(f.nome.trim()) && (
+            <ul className="sugestoes">
+              <li>
+                <button type="button" onClick={() => { const c = f.nome.trim(); mudar({ nome: "" }); void aoLer(c); }}>
+                  Buscar etiqueta <strong>{f.nome.trim()}</strong> <small>código de barras digitado</small>
+                </button>
+              </li>
+            </ul>
+          )}
           {(sugestoesVisiveis.modelos.length > 0 || sugestoesVisiveis.catalogo.length > 0) && (
             <ul className="sugestoes">
               {sugestoesVisiveis.modelos.map((m) => (
@@ -282,7 +354,7 @@ export default function Cadastro() {
         <input ref={inputFoto} type="file" accept="image/*" capture="environment" hidden onChange={escolherFoto} />
       </div>
 
-      {!existente && parecidos.length > 0 && (
+      {!existente && !escolha && parecidos.length > 0 && (
         <div className="cartao destaque">
           <strong>Parece com {parecidos.map((p) => p.modelo.codigo).join(", ")}: é o mesmo?</strong>
           <ul className="lista">

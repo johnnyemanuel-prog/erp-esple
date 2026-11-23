@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { precoAtual } from "@/lib/dominio/preco";
 import { banco, type Modelo } from "@/lib/offline/db";
-import { acharModeloPorLeitura, buscarModelosPorNome, buscarPorCodigoBarras } from "@/lib/offline/catalogo";
+import { buscarModelosPorNome, lerCodigo } from "@/lib/offline/catalogo";
 import { buscarPorVetor } from "@/lib/offline/indexar";
 import { comprimirFoto } from "@/lib/app/foto";
 import { pedirIndexacao, vetorDaImagem, visaoSuportada } from "@/lib/ia/visao";
@@ -54,8 +54,8 @@ export default function Consulta() {
     let vivo = true;
     (async () => {
       const lista: Modelo[] = [];
-      const exato = await acharModeloPorLeitura(db, t);
-      if (exato) lista.push(exato);
+      // Código, QR ou etiqueta antiga (a de "peças diversas" traz todas as peças da faixa).
+      lista.push(...(await lerCodigo(db, t)).modelos);
       for (const m of await buscarModelosPorNome(db, t, 20)) if (!lista.some((x) => x.id === m.id)) lista.push(m);
       if (vivo) setResultados(lista);
     })();
@@ -66,11 +66,14 @@ export default function Consulta() {
 
   const aoLer = useCallback(async (lido: string) => {
     setLendo(false);
-    const m = await acharModeloPorLeitura(db, lido);
-    if (m) return router.push(`/modelo?id=${m.id}`);
-    const item = await buscarPorCodigoBarras(db, lido);
+    const r = await lerCodigo(db, lido);
+    if (!r.ambiguo && r.modelos.length === 1) return router.push(`/modelo?id=${r.modelos[0].id}`);
     setTexto(lido);
-    setAviso(item ? `“${item.nomeSugerido}” está no Innosystem, mas ainda não foi contado aqui.` : `Nada encontrado para ${lido}.`);
+    if (r.ambiguo) {
+      setAviso(`Etiqueta de peças diversas: ${r.modelos.length ? `${r.modelos.length} peças cadastradas com ela. Confira pela foto.` : "nenhuma peça cadastrada com ela ainda."}`);
+    } else {
+      setAviso(r.item ? `“${r.item.nomeSugerido}” está no Innosystem, mas ainda não foi contado aqui.` : `Nada encontrado para ${lido}.`);
+    }
   }, [db, router]);
 
   return (
